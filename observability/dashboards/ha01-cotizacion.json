@@ -1,0 +1,55 @@
+{
+  "title": "HA01 - Latencia de Cotizacion",
+  "uid": "ha01-cotizacion",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "panels": [
+    {
+      "id": 1,
+      "title": "p95 / p99 latencia total (k6)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        { "expr": "histogram_quantile(0.95, sum(rate(k6_http_req_duration_bucket[1m])) by (le, scenario_tag))", "legendFormat": "p95 {{scenario_tag}}" },
+        { "expr": "histogram_quantile(0.99, sum(rate(k6_http_req_duration_bucket[1m])) by (le, scenario_tag))", "legendFormat": "p99 {{scenario_tag}}" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Hit rate de cache",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        { "expr": "rate(k6_cache_hit_rate[1m])", "legendFormat": "hit rate" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Cotizaciones degradadas (%)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        { "expr": "rate(k6_cotizacion_degradada[1m]) * 100", "legendFormat": "% degradadas" }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Cotizaciones fallidas",
+      "type": "stat",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        { "expr": "sum(increase(k6_cotizacion_failed[15m]))", "legendFormat": "fallidas" }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Spans por etapa (avg duration)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 16 },
+      "targets": [
+        { "expr": "avg(span_duration_milliseconds{service_name=\"ms-cotizacion\"}) by (span_name)", "legendFormat": "{{span_name}}" }
+      ]
+    }
+  ]
+}

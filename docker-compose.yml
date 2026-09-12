@@ -1,0 +1,71 @@
+# Stack local para desarrollo/pruebas end-to-end antes de desplegar a EKS.
+# No reemplaza la infraestructura de staging (Terraform + K8s), pero permite
+# correr los experimentos de k6 contra servicios reales sin necesidad de
+# cluster.
+services:
+  redis:
+    image: redis:7.2-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: solventa
+      POSTGRES_PASSWORD: solventa
+      POSTGRES_DB: solventa
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U solventa"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  mock-open-finance:
+    build: ./mock-open-finance
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  ms-cotizacion:
+    build: ./ms-cotizacion
+    ports:
+      - "8001:8000"
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: postgresql://solventa:solventa@postgres:5432/solventa
+      OPEN_FINANCE_URL: http://mock-open-finance:8000
+      OPEN_FINANCE_TIMEOUT_S: "0.7"
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      mock-open-finance:
+        condition: service_healthy
+
+  ms-perfilamiento:
+    build: ./ms-perfilamiento
+    ports:
+      - "8002:8000"
+    environment:
+      REDIS_URL: redis://redis:6379/1
+      OPEN_FINANCE_URL: http://mock-open-finance:8000
+      OPEN_FINANCE_TIMEOUT_S: "0.7"
+    depends_on:
+      redis:
+        condition: service_healthy
+      mock-open-finance:
+        condition: service_healthy

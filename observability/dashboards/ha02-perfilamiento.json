@@ -1,0 +1,54 @@
+{
+  "title": "HA02 - Throughput Perfilamiento",
+  "uid": "ha02-perfilamiento",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "panels": [
+    {
+      "id": 1,
+      "title": "Throughput (perfilamientos/hora)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        { "expr": "sum(rate(k6_http_reqs{experimento=\"HA02\"}[5m])) * 3600", "legendFormat": "perf/hora" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "p95 latencia por fase",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        { "expr": "histogram_quantile(0.95, sum(rate(k6_http_req_duration_bucket[1m])) by (le, fase))", "legendFormat": "p95 {{fase}}" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Réplicas HPA ms-perfilamiento",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        { "expr": "kube_horizontalpodautoscaler_status_current_replicas{horizontalpodautoscaler=\"ms-perfilamiento-hpa\"}", "legendFormat": "réplicas actuales" }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "CPU % por pod",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        { "expr": "sum(rate(container_cpu_usage_seconds_total{pod=~\"ms-perfilamiento-.*\"}[1m])) by (pod)", "legendFormat": "{{pod}}" }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Hit rate de cache",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 16 },
+      "targets": [
+        { "expr": "rate(k6_cache_hit_rate[1m])", "legendFormat": "hit rate" }
+      ]
+    }
+  ]
+}

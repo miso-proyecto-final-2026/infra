@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mock-open-finance
+  namespace: solventa-staging
+  labels:
+    app: mock-open-finance
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mock-open-finance
+  template:
+    metadata:
+      labels:
+        app: mock-open-finance
+    spec:
+      containers:
+        - name: mock-open-finance
+          image: solventa/mock-open-finance:latest
+          ports:
+            - containerPort: 8000
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 3
+            periodSeconds: 5

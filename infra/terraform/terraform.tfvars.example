@@ -1,0 +1,9 @@
+aws_region                 = "us-east-1"
+eks_cluster_name            = "solventa-eks"
+vpc_id                      = "vpc-xxxxxxxx"
+private_subnet_ids          = ["subnet-aaaaaaa", "subnet-bbbbbbb"]
+eks_node_security_group_id  = "sg-xxxxxxxx"
+namespace                   = "solventa-staging"
+db_name                     = "solventa"
+db_username                 = "solventa"
+# db_password: pasar vía TF_VAR_db_password, NO en este archivo.

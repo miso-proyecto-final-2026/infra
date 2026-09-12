@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ms-perfilamiento
+  namespace: solventa-staging
+  labels:
+    app: ms-perfilamiento
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ms-perfilamiento
+  template:
+    metadata:
+      labels:
+        app: ms-perfilamiento
+    spec:
+      containers:
+        - name: ms-perfilamiento
+          image: solventa/ms-perfilamiento:latest
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: ms-perfilamiento-config
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ms-perfilamiento-config
+  namespace: solventa-staging
+data:
+  REDIS_URL: "redis://solventa-redis:6379/1"
+  OPEN_FINANCE_URL: "http://mock-open-finance:8000"
+  OPEN_FINANCE_TIMEOUT_S: "0.7"
+  CACHE_TTL_S: "900"
+  OTEL_SERVICE_NAME: "ms-perfilamiento"
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"
