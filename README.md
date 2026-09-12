@@ -39,18 +39,19 @@ python3 k6/data/generate_data.py
 docker compose up --build -d
 
 # 3. Correr HA01 (Escenario A + B) contra el stack local
-COTIZACION_URL=http://localhost:8001 MOCK_URL=http://localhost:8000 \
+SKIP_K8S_CHECK=true COTIZACION_URL=http://localhost:8001 MOCK_URL=http://localhost:8000 \
   REDIS_URL=redis://localhost:6379/0 ./scripts/run-exp1.sh
 
 # 4. Correr HA02 contra el stack local
-PERFILAMIENTO_URL=http://localhost:8002 MOCK_URL=http://localhost:8000 \
+SKIP_K8S_CHECK=true PERFILAMIENTO_URL=http://localhost:8002 MOCK_URL=http://localhost:8000 \
   REDIS_URL=redis://localhost:6379/1 ./scripts/run-exp2.sh
 ```
 
-`run-exp1.sh` y `run-exp2.sh` llaman `wait_for_pods_running`, que requiere
-`kubectl` apuntando a un cluster; para correr contra `docker compose` sin
-Kubernetes, exportar `NAMESPACE=` vacío o comentar esa línea si no hay
-cluster disponible (ver `scripts/lib.sh`).
+`run-exp1.sh` y `run-exp2.sh` llaman `wait_for_pods_running` y `flush_redis`,
+que por defecto usan `kubectl` apuntando a un cluster. Para correr contra
+`docker compose` sin Kubernetes, exportar `SKIP_K8S_CHECK=true`: se omite la
+verificación de pods y `flush_redis` usa `redis-cli` directo contra
+`REDIS_URL` (ver `scripts/lib.sh`).
 
 ## Correr en EKS (staging)
 
