@@ -11,11 +11,26 @@
  * respecto de la línea base, réplicas HPA estables, hit de caché >= 40%.
  */
 import http from 'k6/http';
+import exec from 'k6/execution';
 import { check } from 'k6';
 import { SharedArray } from 'k6/data';
 import { Rate, Trend } from 'k6/metrics';
 
 const BASE_URL = __ENV.PERFILAMIENTO_URL || 'http://localhost:8002';
+
+// HA02_SMOKE=true corre las 4 fases comprimidas (~5 min en vez de ~70) para
+// validar de punta a punta que el tagging, los thresholds, el dataset y el
+// muestreo del HPA funcionan ANTES de gastar 70 minutos de cluster. Los
+// cortes de fase se escalan con el mismo factor (ver faseCortes).
+const SMOKE = (__ENV.HA02_SMOKE || '').toLowerCase() === 'true';
+const F = SMOKE ? 1 / 14 : 1; // 70 min -> 5 min
+
+// Cortes de fase en minutos: [fin rampa, fin línea base, fin meseta, fin sobrecarga]
+const faseCortes = [15 * F, 20 * F, 50 * F, 60 * F];
+
+function dur(min) {
+  return `${Math.max(1, Math.round(min * F * 60))}s`;
+}
 
 const profiles = new SharedArray('profiles_exp2', function () {
   return JSON.parse(open('./data/profiles_exp2.json'));
@@ -38,10 +53,10 @@ export const options = {
       preAllocatedVUs: 100,
       maxVUs: 500,
       stages: [
-        { target: 20000, duration: '20m' }, // fase 1: rampa
-        { target: 20000, duration: '30m' }, // fase 2: meseta
-        { target: 25000, duration: '10m' }, // fase 3: sobrecarga
-        { target: 0, duration: '10m' },     // fase 4: recuperación
+        { target: 20000, duration: dur(20) }, // fase 1: rampa (incl. línea base)
+        { target: 20000, duration: dur(30) }, // fase 2: meseta
+        { target: 25000, duration: dur(10) }, // fase 3: sobrecarga
+        { target: 0, duration: dur(10) },     // fase 4: recuperación
       ],
     },
   },
@@ -51,21 +66,26 @@ export const options = {
   },
 };
 
-// Etiqueta la fase actual según el tiempo transcurrido, para poder
-// filtrar/comparar el p95 de meseta vs. sobrecarga vs. recuperación en Grafana.
+// Etiqueta la fase actual según el tiempo transcurrido desde el arranque
+// del test, para poder filtrar/comparar el p95 de cada fase al analizar.
+//
+// Se usa exec.instance.currentTestRunDuration (ms desde que arrancó la
+// corrida, idéntico para todos los VUs) y NO un Date.now() guardado en
+// globalThis: cada VU de k6 corre en su propio runtime JS y se inicializa
+// perezosamente a medida que sube la tasa de llegada, así que un VU que
+// arranca en el minuto 30 habría fijado su propio "t0" en el minuto 30 y
+// habría etiquetado sus requests como 'rampa' durante media corrida.
+//
+// Los minutos 15-20 (últimos 5 de la rampa, ya a 20.000/h) se etiquetan
+// aparte como 'linea_base': es contra ese p95 que se compara la meseta
+// para la meta de "degradación <= 10%".
 function currentFase() {
-  const t = __ITER >= 0 ? exec_time_min() : 0;
-  if (t < 20) return 'rampa';
-  if (t < 50) return 'meseta';
-  if (t < 60) return 'sobrecarga';
+  const t = exec.instance.currentTestRunDuration / 60000;
+  if (t < faseCortes[0]) return 'rampa';
+  if (t < faseCortes[1]) return 'linea_base';
+  if (t < faseCortes[2]) return 'meseta';
+  if (t < faseCortes[3]) return 'sobrecarga';
   return 'recuperacion';
-}
-
-function exec_time_min() {
-  // __VU/__ITER no exponen tiempo de reloj directamente; se usa Date.now()
-  // relativo al arranque del script (aproximación suficiente para tagging).
-  if (!globalThis.__start) globalThis.__start = Date.now();
-  return (Date.now() - globalThis.__start) / 60000;
 }
 
 export default function () {
