@@ -100,7 +100,7 @@ informe:
 — el experimento se detuvo después de Escenario A, no llegó a correr
 Escenario B degradado):
 
-| Métrica | Meta (CLAUDE.md) | Resultado real | Cumple |
+| Métrica | Meta | Resultado real | Cumple |
 |---|---|---|---|
 | `cotizacion_failed` (rate) | `== 0` | **0.6126%** (559 de 91.249 requests) | ❌ |
 | `http_req_failed` (rate) | `< 0.1%` | **0.6126%** | ❌ |
