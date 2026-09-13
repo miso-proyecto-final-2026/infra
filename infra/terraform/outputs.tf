@@ -1,5 +1,23 @@
+output "cluster_name" {
+  value = module.eks.cluster_name
+}
+
+output "aws_region" {
+  value = var.aws_region
+}
+
+output "configure_kubectl" {
+  description = "Comando para apuntar kubectl al cluster recién creado"
+  value       = "aws eks update-kubeconfig --region ${var.aws_region} --name ${module.eks.cluster_name}"
+}
+
 output "namespace" {
   value = kubernetes_namespace.solventa_staging.metadata[0].name
+}
+
+output "ecr_repository_urls" {
+  description = "URL de cada repositorio ECR, para build/push (ver scripts/build-and-push.sh)"
+  value       = { for name, repo in aws_ecr_repository.this : name => repo.repository_url }
 }
 
 output "redis_primary_endpoint" {

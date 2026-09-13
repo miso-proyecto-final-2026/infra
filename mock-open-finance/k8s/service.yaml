@@ -3,10 +3,16 @@ kind: Service
 metadata:
   name: mock-open-finance
   namespace: solventa-staging
+  annotations:
+    # Expuesto por LB (no solo ClusterIP) para que scripts/lib.sh pueda
+    # reconfigurar la latencia (`PUT /config/latency`) desde fuera del
+    # cluster sin necesitar port-forward. Bajo volumen de tráfico admin,
+    # no necesita NLB.
+    service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
 spec:
   selector:
     app: mock-open-finance
   ports:
     - port: 8000
       targetPort: 8000
-  type: ClusterIP
+  type: LoadBalancer

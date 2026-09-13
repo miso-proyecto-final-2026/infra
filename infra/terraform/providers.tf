@@ -1,35 +1,33 @@
-terraform {
-  required_version = ">= 1.5"
+provider "aws" {
+  region = var.aws_region
 
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.60"
-    }
-    kubernetes = {
-      source  = "hashicorp/kubernetes"
-      version = "~> 2.31"
-    }
+  default_tags {
+    tags = var.tags
   }
 }
 
-provider "aws" {
-  region = var.aws_region
-}
-
-# Se asume un cluster EKS ya existente (creado fuera de este módulo, dado
-# que la infraestructura de experimentos se levanta bajo demanda sobre un
-# cluster compartido). Se apunta el provider de kubernetes a ese cluster.
-data "aws_eks_cluster" "this" {
-  name = var.eks_cluster_name
-}
-
+# El cluster EKS lo crea este mismo módulo (ver eks.tf); los providers de
+# kubernetes y helm se autentican contra él usando sus outputs, más un token
+# de corta duración vía el data source de autenticación de EKS (evita
+# depender de un exec/aws-iam-authenticator externo).
 data "aws_eks_cluster_auth" "this" {
-  name = var.eks_cluster_name
+  name = module.eks.cluster_name
 }
 
 provider "kubernetes" {
-  host                   = data.aws_eks_cluster.this.endpoint
-  cluster_ca_certificate = base64decode(data.aws_eks_cluster.this.certificate_authority[0].data)
+  host                   = module.eks.cluster_endpoint
+  cluster_ca_certificate = base64decode(module.eks.cluster_certificate_authority_data)
   token                  = data.aws_eks_cluster_auth.this.token
+}
+
+provider "helm" {
+  kubernetes {
+    host                   = module.eks.cluster_endpoint
+    cluster_ca_certificate = base64decode(module.eks.cluster_certificate_authority_data)
+    token                  = data.aws_eks_cluster_auth.this.token
+  }
+}
+
+data "aws_availability_zones" "available" {
+  state = "available"
 }

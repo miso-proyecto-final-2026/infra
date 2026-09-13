@@ -17,7 +17,9 @@ spec:
     spec:
       containers:
         - name: ms-perfilamiento
-          image: solventa/ms-perfilamiento:latest
+          # Sustituido por scripts/setup.sh vía envsubst con la URL real de
+          # ECR (ver terraform output ecr_repository_urls).
+          image: ${MS_PERFILAMIENTO_IMAGE}
           ports:
             - containerPort: 8000
           envFrom:
@@ -49,7 +51,10 @@ metadata:
   name: ms-perfilamiento-config
   namespace: solventa-staging
 data:
-  REDIS_URL: "redis://solventa-redis:6379/1"
+  # ElastiCache es un endpoint gestionado externo al cluster (no un Service
+  # de k8s): sustituido por scripts/setup.sh vía envsubst con
+  # `terraform output redis_primary_endpoint`.
+  REDIS_URL: "redis://${REDIS_ENDPOINT}:6379/1"
   OPEN_FINANCE_URL: "http://mock-open-finance:8000"
   OPEN_FINANCE_TIMEOUT_S: "0.7"
   CACHE_TTL_S: "900"

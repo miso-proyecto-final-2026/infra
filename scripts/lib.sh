@@ -57,11 +57,13 @@ wait_for_pods_running() {
 }
 
 flush_redis() {
-  log "Limpiando caché Redis (FLUSHALL)..."
+  local redis_url="${REDIS_URL:?flush_redis requiere REDIS_URL definida (ver resolve_redis_url)}"
+  log "Limpiando caché Redis (FLUSHALL) en ${redis_url}..."
+
   if [ "${SKIP_K8S_CHECK}" = "true" ]; then
     if command -v redis-cli > /dev/null 2>&1; then
-      if ! redis-cli -u "${REDIS_URL:-redis://localhost:6379/0}" FLUSHALL; then
-        err "No se pudo conectar a Redis en ${REDIS_URL:-redis://localhost:6379/0}."
+      if ! redis-cli -u "${redis_url}" FLUSHALL; then
+        err "No se pudo conectar a Redis en ${redis_url}."
         err "¿Está corriendo 'docker compose up'?"
         exit 1
       fi
@@ -79,10 +81,39 @@ flush_redis() {
     fi
     return 0
   fi
-  if ! kubectl exec -n "${NAMESPACE}" deploy/redis -- redis-cli FLUSHALL; then
-    err "No se pudo hacer FLUSHALL vía kubectl exec en ${NAMESPACE}."
+
+  # En AWS, Redis es ElastiCache: un endpoint gestionado en una subnet
+  # privada, no un Service de k8s. Se usa un pod efímero dentro del cluster
+  # (misma VPC) para poder alcanzarlo y ejecutar el FLUSHALL.
+  if ! kubectl run "redis-flush-$(date +%s)" --rm -i --restart=Never \
+    --image=redis:7.2-alpine -n "${NAMESPACE}" --command \
+    -- redis-cli -u "${redis_url}" FLUSHALL; then
+    err "No se pudo hacer FLUSHALL contra ${redis_url} vía pod efímero en ${NAMESPACE}."
     exit 1
   fi
+}
+
+# Resuelve REDIS_URL: usa la variable de entorno si ya está exportada, si no
+# la lee de `terraform output redis_primary_endpoint` (modo AWS) o usa el
+# default de docker-compose (modo local).
+resolve_redis_url() {
+  local db_index="${1:-0}"
+  if [ -n "${REDIS_URL:-}" ]; then
+    echo "${REDIS_URL}"
+    return 0
+  fi
+  if [ "${SKIP_K8S_CHECK}" = "true" ]; then
+    echo "redis://localhost:6379/${db_index}"
+    return 0
+  fi
+  local endpoint
+  endpoint=$(cd infra/terraform && terraform output -raw redis_primary_endpoint 2>/dev/null) || true
+  if [ -z "${endpoint}" ]; then
+    err "No se pudo leer redis_primary_endpoint de 'terraform output' y REDIS_URL no está definida."
+    err "Exporta REDIS_URL manualmente (ver 'terraform output redis_primary_endpoint' en infra/terraform)."
+    exit 1
+  fi
+  echo "redis://${endpoint}:6379/${db_index}"
 }
 
 set_mock_latency() {
@@ -101,4 +132,67 @@ set_mock_latency() {
 
 ensure_results_dir() {
   mkdir -p "${RESULTS_DIR}"
+}
+
+# Devuelve el hostname/IP público del Service tipo LoadBalancer dado, o
+# cadena vacía si aún no fue asignado por AWS.
+lb_host() {
+  local svc="$1"
+  local host
+  host=$(kubectl get svc "${svc}" -n "${NAMESPACE}" \
+    -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)
+  if [ -z "${host}" ]; then
+    host=$(kubectl get svc "${svc}" -n "${NAMESPACE}" \
+      -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)
+  fi
+  echo "${host}"
+}
+
+# Espera hasta que el Service tenga un LoadBalancer asignado (AWS suele
+# tardar 2-4 min en NLB, más en Classic ELB) e imprime su URL http://.
+wait_for_loadbalancer() {
+  local svc="$1"
+  local timeout_s="${2:-300}"
+  local elapsed=0
+  log "Esperando hostname/IP del LoadBalancer de '${svc}'..." >&2
+  while true; do
+    local host
+    host=$(lb_host "${svc}")
+    if [ -n "${host}" ]; then
+      log "'${svc}' disponible en: http://${host}:8000" >&2
+      echo "http://${host}:8000"
+      return 0
+    fi
+    if [ "${elapsed}" -ge "${timeout_s}" ]; then
+      err "Timeout esperando el LoadBalancer de '${svc}'."
+      err "Revisa 'kubectl get svc ${svc} -n ${NAMESPACE}' y 'kubectl describe svc ${svc} -n ${NAMESPACE}'."
+      exit 1
+    fi
+    sleep 10
+    elapsed=$((elapsed + 10))
+  done
+}
+
+# Resuelve una URL de servicio: usa la variable de entorno si ya está
+# exportada, si no la descubre vía el LoadBalancer de Kubernetes (modo AWS)
+# o cae al default de docker-compose (modo local, si se pasa uno).
+resolve_service_url() {
+  local var_name="$1"
+  local svc_name="$2"
+  local local_default="${3:-}"
+  local current="${!var_name:-}"
+  if [ -n "${current}" ]; then
+    echo "${current}"
+    return 0
+  fi
+  if [ "${SKIP_K8S_CHECK}" = "true" ]; then
+    if [ -n "${local_default}" ]; then
+      echo "${local_default}"
+      return 0
+    fi
+    err "${var_name} no está definida. En modo local (SKIP_K8S_CHECK=true) debes exportarla, p.ej.:"
+    err "  export ${var_name}=http://localhost:8000"
+    exit 1
+  fi
+  wait_for_loadbalancer "${svc_name}"
 }

@@ -2,9 +2,9 @@
 # experimentos que se apagan al terminar).
 
 resource "aws_security_group" "redis" {
-  name_prefix = "solventa-redis-"
+  name_prefix = "${var.project_name}-redis-"
   description = "Acceso a ElastiCache Redis desde los nodos EKS"
-  vpc_id      = var.vpc_id
+  vpc_id      = module.vpc.vpc_id
   tags        = var.tags
 }
 
@@ -14,7 +14,7 @@ resource "aws_security_group_rule" "redis_ingress_from_eks" {
   to_port                  = 6379
   protocol                 = "tcp"
   security_group_id        = aws_security_group.redis.id
-  source_security_group_id = var.eks_node_security_group_id
+  source_security_group_id = module.eks.node_security_group_id
 }
 
 resource "aws_security_group_rule" "redis_egress_all" {
@@ -27,23 +27,23 @@ resource "aws_security_group_rule" "redis_egress_all" {
 }
 
 resource "aws_elasticache_subnet_group" "solventa" {
-  name       = "solventa-staging-redis"
-  subnet_ids = var.private_subnet_ids
+  name       = "${var.project_name}-${var.environment}-redis"
+  subnet_ids = module.vpc.private_subnets
   tags       = var.tags
 }
 
 resource "aws_elasticache_replication_group" "solventa" {
-  replication_group_id = "solventa-staging-redis"
-  description           = "Redis cache-aside para MS Cotizacion y MS Perfilamiento"
+  replication_group_id = "${var.project_name}-${var.environment}-redis"
+  description          = "Redis cache-aside para MS Cotizacion y MS Perfilamiento"
 
-  node_type            = "cache.t3.micro"
-  engine                = "redis"
-  engine_version        = "7.1"
-  num_cache_clusters    = 1 # 1 réplica (sin failover multi-AZ, staging)
-  port                  = 6379
+  node_type          = "cache.t3.micro"
+  engine             = "redis"
+  engine_version     = "7.1"
+  num_cache_clusters = 1 # 1 réplica (sin failover multi-AZ, staging)
+  port               = 6379
 
-  subnet_group_name   = aws_elasticache_subnet_group.solventa.name
-  security_group_ids  = [aws_security_group.redis.id]
+  subnet_group_name  = aws_elasticache_subnet_group.solventa.name
+  security_group_ids = [aws_security_group.redis.id]
 
   automatic_failover_enabled = false
   multi_az_enabled           = false

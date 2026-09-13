@@ -29,6 +29,12 @@ export const cacheHitRate = new Rate('cache_hit_rate');
 export const latenciaTotal = new Trend('latencia_total_ms', true);
 
 export const options = {
+  // El NLB de AWS tiene un idle timeout de conexión TCP fijo en 350s (no
+  // configurable). Si k6 reutiliza una conexión keep-alive que estuvo
+  // inactiva más de eso (típico al inicio de la rampa, con tráfico bajo),
+  // el NLB ya la cerró de su lado y el request revienta con "EOF". Se
+  // fuerza una conexión nueva por request para evitarlo (ver docs/hallazgos.md).
+  noConnectionReuse: true,
   scenarios: {
     cotizacion: {
       executor: 'ramping-arrival-rate',

@@ -1,9 +1,9 @@
 # RDS PostgreSQL: db.t3.micro, staging, Multi-AZ deshabilitado.
 
 resource "aws_security_group" "rds" {
-  name_prefix = "solventa-rds-"
+  name_prefix = "${var.project_name}-rds-"
   description = "Acceso a RDS PostgreSQL desde los nodos EKS"
-  vpc_id      = var.vpc_id
+  vpc_id      = module.vpc.vpc_id
   tags        = var.tags
 }
 
@@ -13,7 +13,7 @@ resource "aws_security_group_rule" "rds_ingress_from_eks" {
   to_port                  = 5432
   protocol                 = "tcp"
   security_group_id        = aws_security_group.rds.id
-  source_security_group_id = var.eks_node_security_group_id
+  source_security_group_id = module.eks.node_security_group_id
 }
 
 resource "aws_security_group_rule" "rds_egress_all" {
@@ -26,13 +26,13 @@ resource "aws_security_group_rule" "rds_egress_all" {
 }
 
 resource "aws_db_subnet_group" "solventa" {
-  name       = "solventa-staging-db"
-  subnet_ids = var.private_subnet_ids
+  name       = "${var.project_name}-${var.environment}-db"
+  subnet_ids = module.vpc.private_subnets
   tags       = var.tags
 }
 
 resource "aws_db_instance" "solventa" {
-  identifier     = "solventa-staging-pg"
+  identifier     = "${var.project_name}-${var.environment}-pg"
   engine         = "postgres"
   engine_version = "16.4"
 

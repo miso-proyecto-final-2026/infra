@@ -3,10 +3,27 @@ kind: Service
 metadata:
   name: ms-cotizacion
   namespace: solventa-staging
+  annotations:
+    # NLB en vez de la Classic ELB por defecto: mejor throughput/latencia
+    # bajo la carga sostenida de k6 (HA01: hasta 5.000 sol/min).
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
+    # Con ms-cotizacion en 1 sola réplica (sin HPA, por diseño de HA01), un
+    # health check agresivo puede marcar el único pod "unhealthy" por un
+    # bache momentáneo del event loop (p.ej. una ráfaga de cache misses al
+    # expirar el TTL en bloque) y el NLB corta en seco las conexiones en
+    # curso hacia él (target_health_state.unhealthy.connection_termination
+    # está en true por defecto) -> aparece como EOF en el cliente/k6.
+    # Se relajan los umbrales para tolerar baches cortos sin desregistrar
+    # el target innecesariamente.
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-interval: "30"
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-timeout: "10"
+    service.beta.kubernetes.io/aws-load-balancer-healthy-threshold: "2"
+    service.beta.kubernetes.io/aws-load-balancer-unhealthy-threshold: "5"
 spec:
   selector:
     app: ms-cotizacion
   ports:
     - port: 8000
       targetPort: 8000
-  type: ClusterIP
+  type: LoadBalancer

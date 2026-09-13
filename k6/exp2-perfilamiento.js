@@ -26,6 +26,10 @@ export const cacheHitRate = new Rate('cache_hit_rate');
 export const latenciaTotal = new Trend('latencia_total_ms', true);
 
 export const options = {
+  // Ver comentario equivalente en exp1-cotizacion.js: el NLB de AWS cierra
+  // conexiones TCP inactivas a los 350s (fijo, no configurable); se evita
+  // reutilizar conexiones potencialmente muertas (ver docs/hallazgos.md).
+  noConnectionReuse: true,
   scenarios: {
     perfilamiento: {
       executor: 'ramping-arrival-rate',

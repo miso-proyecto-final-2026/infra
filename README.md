@@ -21,7 +21,7 @@ mock-open-finance/   Stub FastAPI de Open Finance con latencia inyectable
 ms-cotizacion/        FastAPI + Redis + pybreaker + PostgreSQL + OTel (HA01)
 ms-perfilamiento/     FastAPI + Redis + HPA + OTel (HA02)
 k6/                   Scripts de carga y generador de datasets sintéticos
-infra/terraform/      Namespace EKS, ElastiCache Redis, RDS PostgreSQL
+infra/terraform/      VPC, EKS + node group, ECR, ElastiCache Redis, RDS PostgreSQL
 observability/        OpenTelemetry Collector + dashboards de Grafana
 db/init.sql           Esquema PostgreSQL (cotizacion, log_latencia)
 scripts/              setup.sh, run-exp1.sh, run-exp2.sh, teardown.sh
@@ -53,24 +53,48 @@ que por defecto usan `kubectl` apuntando a un cluster. Para correr contra
 verificación de pods y `flush_redis` usa `redis-cli` directo contra
 `REDIS_URL` (ver `scripts/lib.sh`).
 
-## Correr en EKS (staging)
+## Correr en AWS (staging) — infra 100% Terraform
+
+Terraform crea **todo** desde cero: VPC (2 AZs, NAT único), cluster EKS +
+node group administrado, repositorios ECR, ElastiCache Redis, RDS
+PostgreSQL, el namespace de Kubernetes y `metrics-server` (vía Helm, requerido
+por el HPA de `ms-perfilamiento`). No asume que ya exista un cluster.
+
+**Prerrequisitos en tu máquina:** `terraform` >= 1.5, `aws` CLI autenticado
+contra tu cuenta (`aws sts get-caller-identity` debe funcionar), `kubectl`,
+`docker`, `envsubst` (paquete `gettext-base`, ya viene en la mayoría de
+distros Ubuntu/Debian).
 
 ```bash
-# 1. Aprovisionar infraestructura (Terraform) + desplegar manifiestos K8s
-export TF_VAR_db_password='...'
+# 1. Configurar variables (opcional, hay defaults razonables)
+cp infra/terraform/terraform.tfvars.example infra/terraform/terraform.tfvars
+# editar región, tamaño de nodos, etc. si hace falta
+
+# 2. Password de RDS: nunca en el tfvars, siempre por variable de entorno
+export TF_VAR_db_password='elige-un-password-seguro'
+
+# 3. Levantar TODO: terraform apply (~15-20 min por el cluster EKS) +
+#    apuntar kubectl al cluster + build&push de las 3 imágenes a ECR +
+#    aplicar los manifiestos de Kubernetes
 ./scripts/setup.sh
 
-# 2. Ejecutar los experimentos (vía port-forward o Ingress según el cluster)
+# 4. Ejecutar los experimentos (kubectl ya apunta al cluster de AWS)
 ./scripts/run-exp1.sh
 ./scripts/run-exp2.sh
+# nota: los Services de mock-open-finance, ms-cotizacion y ms-perfilamiento
+# son LoadBalancer (NLB en los dos últimos), así que no hace falta
+# port-forward. setup.sh espera a que AWS asigne el hostname del LB y lo
+# imprime al final; run-exp1.sh/run-exp2.sh también lo autodescubren solos
+# si no exportas COTIZACION_URL/PERFILAMIENTO_URL/MOCK_URL a mano.
 
-# 3. Apagar todo al terminar (control de créditos AWS)
+# 5. Apagar TODO al terminar (control de créditos AWS: EKS + nodos + NAT
+#    gateway + RDS + ElastiCache tienen costo por hora mientras estén arriba)
 ./scripts/teardown.sh
 ```
 
-Configurar `infra/terraform/terraform.tfvars` a partir de
-`terraform.tfvars.example` con los datos del cluster EKS existente (VPC,
-subnets privadas, security group de los nodos).
+Si ya tienes un cluster EKS y prefieres reusarlo en lugar de crear uno nuevo,
+dime y ajusto `infra/terraform/eks.tf`/`vpc.tf` para apuntar a recursos
+existentes vía `data` sources en lugar de crearlos.
 
 ## Tests unitarios
 

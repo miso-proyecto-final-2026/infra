@@ -17,7 +17,9 @@ spec:
     spec:
       containers:
         - name: ms-cotizacion
-          image: solventa/ms-cotizacion:latest
+          # Sustituido por scripts/setup.sh vía envsubst con la URL real de
+          # ECR (ver terraform output ecr_repository_urls).
+          image: ${MS_COTIZACION_IMAGE}
           ports:
             - containerPort: 8000
           envFrom:
@@ -51,7 +53,10 @@ metadata:
   name: ms-cotizacion-config
   namespace: solventa-staging
 data:
-  REDIS_URL: "redis://solventa-redis:6379/0"
+  # ElastiCache es un endpoint gestionado externo al cluster (no un Service
+  # de k8s): sustituido por scripts/setup.sh vía envsubst con
+  # `terraform output redis_primary_endpoint`.
+  REDIS_URL: "redis://${REDIS_ENDPOINT}:6379/0"
   OPEN_FINANCE_URL: "http://mock-open-finance:8000"
   OPEN_FINANCE_TIMEOUT_S: "0.7"
   CACHE_TTL_S: "300"

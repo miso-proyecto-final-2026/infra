@@ -3,7 +3,9 @@ resource "kubernetes_namespace" "solventa_staging" {
     name = var.namespace
     labels = {
       "app.kubernetes.io/part-of" = "solventa-experimentos"
-      "environment"               = "staging"
+      "environment"               = var.environment
     }
   }
+
+  depends_on = [module.eks]
 }

@@ -17,7 +17,9 @@ spec:
     spec:
       containers:
         - name: mock-open-finance
-          image: solventa/mock-open-finance:latest
+          # Sustituido por scripts/setup.sh vía envsubst con la URL real de
+          # ECR (ver terraform output ecr_repository_urls).
+          image: ${MOCK_OPEN_FINANCE_IMAGE}
           ports:
             - containerPort: 8000
           resources:
