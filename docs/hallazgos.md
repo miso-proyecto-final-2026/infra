@@ -234,3 +234,65 @@ abrir).
 tooling de experimentación — un threshold incumplido es exactamente el
 tipo de señal que HA01 está diseñado para capturar, no debería tratarse
 como una excepción que aborta el proceso.
+
+---
+
+## 2026-09-12 — HA01 completo (Escenario A + B) con `noConnectionReuse` y el fix de `set -e`: resultados finales
+
+**Corrida:** `run-exp1.sh` completo por primera vez, con ambos fixes ya
+aplicados (`k6/exp1-cotizacion.js` con `noConnectionReuse: true`, y los
+scripts sin abortar por thresholds). Datos en
+`results/archive/2026-09-12_ha01-completo-con-fixes/` (summaries +
+crudo). Infra destruida (`teardown.sh`) inmediatamente después — estos son
+los números finales de esta ronda de experimentos.
+
+| Métrica | Meta | Escenario A (normal) | Escenario B (degradado) |
+|---|---|---|---|
+| `cotizacion_failed` / `http_req_failed` | 0% | **0%** ✅ | **0%** ✅ |
+| `http_req_duration` p95 (cliente) | ≤250ms / ≤300ms | **357.6ms** ❌ | **123.9ms** ✅ |
+| `http_req_duration` p99 (cliente) | ≤500ms (solo normal) | **565.3ms** ❌ | 829.7ms (sin meta definida para degradado) |
+| `cache_hit_rate` | ≥60% desde min. 3 | **94.4%** ✅ | 0% (ver nota) |
+| `cotizacion_degradada` | — | 0% ✅ (esperado, circuito cerrado) | **100%** ✅ |
+
+p99 se calculó aparte (no viene en el `--summary-export` por defecto de
+k6, solo exporta p90/p95): se extrajo con `jq` filtrando
+`metric=="http_req_duration"` + `tags.scenario_tag` del archivo crudo
+(`--out json=...`) y percentil calculado en Python sobre los 91.249
+valores de cada escenario.
+
+**El resultado central de HA01 se cumplió:** el circuit breaker + caché
+lograron **0% de cotizaciones fallidas incluso con Open Finance
+100% degradado** (100% de las cotizaciones en Escenario B salieron
+marcadas `degradada=true`, ninguna falló). Esa es la hipótesis de diseño
+que este experimento existe para validar, y se validó.
+
+**Lo que no se cumplió — dos hallazgos de latencia, no de disponibilidad:**
+
+1. **p95/p99 en Escenario A (normal) exceden la meta** (357.6ms/565.3ms
+   vs. 250ms/500ms). De ese exceso, un componente ya identificado
+   (hallazgo de 2026-09-13 arriba) es la latencia de red entre k6 —
+   corriendo fuera de la VPC, contra el DNS público del NLB— y el cluster:
+   la propia app mide internamente p95≈261ms (`latencia_total_ms`), mucho
+   más cerca de la meta que los 357.6ms que ve k6. El resto de la brecha
+   (261ms vs. 250ms) es un exceso real, aunque pequeño, del propio
+   servicio bajo carga plena (5.000 sol/min).
+2. **p99 en Escenario B es alto (829.7ms) pese a que el p95 es excelente
+   (123.9ms)** — no incumple ninguna meta explícita (HA01 no define p99
+   para degradado), pero es una cola larga notoria. Hipótesis más probable
+   (no verificada con logs/trazas en esta ronda): los reintentos
+   periódicos de `pybreaker` cada `CB_RESET_TIMEOUT_S=30s` (el circuito
+   pasa a *half-open* y prueba una llamada real a Open Finance, que sigue
+   tardando 800-1500ms y volviendo a fallar) generan picos de latencia
+   recurrentes a lo largo de los 25 minutos de la corrida, sin afectar al
+   grueso de las requests que sí se resuelven casi instantáneo desde caché
+   stale/default.
+
+**Estado:** HA01 ejecutado exitosamente de punta a punta con datos
+válidos y reproducibles. Meta de disponibilidad (0% fallos) **cumplida**.
+Metas de latencia en operación normal **no cumplidas** por un margen
+moderado — queda como hallazgo de arquitectura para el informe, con dos
+hipótesis de causa ya identificadas (overhead de red externa + posible
+efecto del backoff del circuit breaker) que se pueden profundizar en una
+próxima ronda si se vuelve a levantar la infra (con OpenTelemetry/Grafana
+ya conectado, para correlacionar los picos de p99 con los ciclos de
+half-open del breaker en vez de inferirlo).
