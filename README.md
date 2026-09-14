@@ -14,6 +14,15 @@ contexto completo y las metas de cada experimento.
   circuit breaker). Meta: ≥ 20.000 perfilamientos/hora sostenidos, p95 sin
   degradarse > 10%, hit de caché ≥ 40%.
 
+## Documentación
+
+- [`docs/hallazgos.md`](./docs/hallazgos.md) — bitácora viva de hallazgos: cada
+  síntoma observado durante las corridas, su causa raíz verificada y la
+  mitigación aplicada o descartada.
+- [`docs/resultados-finales-experimentacion.md`](./docs/resultados-finales-experimentacion.md)
+  — resultados finales de HA01 y HA02, análisis de cumplimiento de las
+  hipótesis de diseño y decisiones de arquitectura derivadas.
+
 ## Estructura
 
 ```
