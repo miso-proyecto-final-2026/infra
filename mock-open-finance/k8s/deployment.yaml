@@ -6,6 +6,11 @@ metadata:
   labels:
     app: mock-open-finance
 spec:
+  # IMPORTANTE: debe quedarse en 1 réplica. La latencia inyectada se guarda en
+  # memoria del proceso (`_config` a nivel de módulo en app/main.py) y
+  # `set_mock_latency` la configura con un PUT a través del LoadBalancer, que
+  # llega a un solo pod. Con 2+ réplicas, las demás seguirían respondiendo con
+  # la latencia por defecto y el escenario quedaría corrupto en silencio.
   replicas: 1
   selector:
     matchLabels:
@@ -23,12 +28,18 @@ spec:
           ports:
             - containerPort: 8000
           resources:
+            # Subido respecto del diseño original (100m/250m). A la carga de la
+            # corrida de capacidad de HA02 (~200 sol/s para activar el HPA), el
+            # mock con 250m de límite se satura antes que ms-perfilamiento y se
+            # acabaría midiendo el cuello de botella del stub en vez del del
+            # servicio bajo prueba. A las 4 fases del diseño (5,6 sol/s) le
+            # sobraba con 250m; esto es holgura para la corrida adicional.
             requests:
-              cpu: 100m
-              memory: 128Mi
-            limits:
               cpu: 250m
               memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 512Mi
           livenessProbe:
             httpGet:
               path: /health
